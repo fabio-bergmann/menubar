@@ -50,19 +50,22 @@ final class AppSettings: ObservableObject {
         tiers[bundleID] ?? newAppTier
     }
 
-    /// Adds apps seen with menu bar icons for the first time, and keeps names
-    /// up to date. Their tier stays unset, so they follow `newAppTier` until
-    /// one is picked.
+    /// Adds apps seen with menu bar icons for the first time, giving each the
+    /// tier for new icons there and then, so changing that setting later only
+    /// affects apps still to come. Keeps names up to date.
     func remember(_ apps: [KnownApp]) {
         var known = knownApps
+        var assigned = tiers
         for app in apps {
             if let index = known.firstIndex(where: { $0.bundleID == app.bundleID }) {
                 if known[index].name != app.name { known[index].name = app.name }
             } else {
                 known.append(app)
             }
+            if assigned[app.bundleID] == nil { assigned[app.bundleID] = newAppTier }
         }
         if known != knownApps { knownApps = known }
+        if assigned != tiers { tiers = assigned }
     }
 
     func forget(_ bundleID: String) {
