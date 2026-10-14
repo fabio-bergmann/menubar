@@ -9,6 +9,10 @@ final class StatusItemController: NSObject {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var appearanceObservation: NSKeyValueObservation?
     private var revealed = false
+    /// What the image was last drawn for. Setting an image makes macOS
+    /// redraw the item's copies in the menu bar, which reports an appearance
+    /// change, so redrawing on every report would never stop.
+    private var drawn: (revealed: Bool, dark: Bool)?
 
     override init() {
         super.init()
@@ -18,9 +22,12 @@ final class StatusItemController: NSObject {
             button.action = #selector(clicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.imagePosition = .imageOnly
-            // The dev build's coloured image follows the menu bar's light or dark look.
-            appearanceObservation = button.observe(\.effectiveAppearance) { [weak self] _, _ in
-                DispatchQueue.main.async { self?.render() }
+            // Only the dev build's coloured image follows the menu bar's light
+            // or dark look; a template image is tinted by macOS.
+            if AppVariant.isDev {
+                appearanceObservation = button.observe(\.effectiveAppearance) { [weak self] _, _ in
+                    DispatchQueue.main.async { self?.render() }
+                }
             }
         }
         render()
@@ -34,7 +41,9 @@ final class StatusItemController: NSObject {
 
     private func render() {
         guard let button = item.button else { return }
-        let dark = button.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let dark = AppVariant.isDev && button.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if let drawn, drawn.revealed == revealed, drawn.dark == dark { return }
+        drawn = (revealed, dark)
         button.image = ChevronRenderer.image(revealed: revealed, devMarker: AppVariant.isDev, darkMenuBar: dark)
     }
 
