@@ -42,13 +42,16 @@ so the script quits the installed Menubar while it runs and reopens it after.
 - It starts the app with `open`, not by running the binary: macOS only gives
   a menu bar item to an app it launched itself. Anything the app prints lands
   in `build/dev.log`.
-- Every rebuild is a new ad-hoc signature, and macOS ties the Accessibility
-  grant to the signature, so after a rebuild the grant is stale (still
-  switched on in System Settings, doing nothing). Hiding doesn't need it; the
-  full app list and the clock do. Settings' **Allow Accessibility…** runs
-  `tccutil reset Accessibility <bundle id>` and prompts again. A stable
-  self-signed certificate would end this, but adding one changes the login
-  keychain, so that's Fabio's call.
+- Builds are signed with "Fabio Local Code Signing", a self-signed
+  certificate in the login keychain (`scripts/make-signing-cert.sh` makes it,
+  once per Mac). macOS ties the Accessibility grant to the signature's
+  designated requirement, which here is the bundle id plus that certificate,
+  so the grant survives rebuilds and updates. Without the certificate
+  `build-app.sh` warns and signs ad hoc, and every build then loses the grant
+  (still switched on in System Settings, doing nothing). Settings' **Allow
+  Accessibility…** runs `tccutil reset Accessibility <bundle id>` and prompts
+  again, for that case and for the first grant after switching signatures.
+  The dev and installed builds have separate bundle ids, so separate grants.
 
 ## Commands
 
@@ -158,10 +161,13 @@ scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
 - **Apple's own items are always kept.** They're allowed by numeric id
   (`VisibilityPlan.allSystemItems`, 0-63); System Settings › Control Center
   already turns them on and off.
-- **Accessibility is only for the list.** Without it Settings lists apps
-  without a Dock icon (nearly all menu bar apps) plus remembered ones.
-- **No Apple Developer licence.** The app is ad-hoc signed and never
-  notarized, which only works because it is built on the machine it runs on.
+- **Accessibility is for clicks, the list and the clock, never for hiding.**
+  Without it, hiding still works by bundle id; Settings lists apps without a
+  Dock icon (nearly all menu bar apps) plus remembered ones; On click icons
+  stay showing.
+- **No Apple Developer licence.** The app is signed with a self-signed
+  certificate (see the dev loop) and never notarized, which only works
+  because it is built on the machine it runs on.
   Updates rebuild from the checkout: `release-local.sh` exports a committed
   ref with `git archive` (never the working tree), builds it, bakes the
   commit and checkout path into Info.plist (`MBBuildSHA`, `MBRepoPath`) and

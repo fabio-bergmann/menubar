@@ -48,9 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // There's nothing in the menu bar to open Settings from, so it opens
         // by itself the first time, since nothing is hidden until tiers are
-        // picked, and whenever Accessibility is missing, which every update of
-        // an ad-hoc signed app causes. Not for the dev build, which rebuilds
-        // on every save.
+        // picked, and whenever Accessibility is missing (a build signed ad hoc
+        // loses it). Not for the dev build, which rebuilds on every save.
+        NSLog("Menubar: Accessibility %@", AXIsProcessTrusted() ? "allowed" : "not allowed")
         let firstLaunchKey = "hasLaunchedBefore"
         let firstLaunch = !UserDefaults.standard.bool(forKey: firstLaunchKey)
         UserDefaults.standard.set(true, forKey: firstLaunchKey)

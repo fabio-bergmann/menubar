@@ -67,6 +67,7 @@ final class MenuBarController {
             forName: NSNotification.Name("com.apple.accessibility.api"), object: nil, queue: .main
         ) { [weak self] _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                NSLog("Menubar: Accessibility now %@", AXIsProcessTrusted() ? "allowed" : "not allowed")
                 self?.apply()
                 self?.inventory.scan()
             }

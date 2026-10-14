@@ -4,9 +4,8 @@ import ApplicationServices
 /// Which running apps have icons in the menu bar, read through Accessibility.
 ///
 /// Only Settings needs this, to list the apps worth giving a tier. Hiding
-/// itself goes by bundle id and works without it, so a lost Accessibility
-/// grant (every rebuild of an ad-hoc signed app loses it) costs the list,
-/// never the hiding.
+/// itself goes by bundle id and works without it, so a missing Accessibility
+/// grant costs the list, never the hiding.
 final class MenuBarInventory: ObservableObject {
     struct Entry: Equatable, Identifiable {
         let bundleID: String
@@ -44,10 +43,11 @@ final class MenuBarInventory: ObservableObject {
         isTrusted = trusted
     }
 
-    /// Asks macOS for Accessibility afresh. Each build is signed anew, and a
-    /// grant made to an earlier build stays switched on in System Settings
-    /// while doing nothing. So the old entry is cleared first, and macOS's
-    /// prompt then adds one for this build, ready to be switched on.
+    /// Asks macOS for Accessibility afresh. A grant made to a build signed
+    /// differently (ad hoc, or before the signing certificate) stays switched
+    /// on in System Settings while doing nothing. So the old entry is cleared
+    /// first, and macOS's prompt then adds one for this build, ready to be
+    /// switched on.
     func requestTrust() {
         if let bundleID = Bundle.main.bundleIdentifier {
             let reset = Process()

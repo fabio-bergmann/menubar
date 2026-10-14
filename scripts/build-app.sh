@@ -49,8 +49,18 @@ plutil -replace CFBundleDisplayName -string "$APP_NAME" "$PLIST"
 plutil -insert MBBuildSHA -string "${MENUBAR_BUILD_SHA:-}" "$PLIST"
 plutil -insert MBRepoPath -string "${MENUBAR_REPO_PATH:-}" "$PLIST"
 
-# Apple Silicon refuses to run unsigned code; an ad-hoc signature is enough
-# for an app that never leaves the machine it was built on.
-codesign --force --sign - "$APP"
+# Signed with the self-signed certificate from scripts/make-signing-cert.sh,
+# so the signature names the certificate rather than this build and macOS
+# keeps the Accessibility grant across builds. Without it, an ad-hoc
+# signature still runs here (the app never leaves this Mac) but loses the
+# grant every build.
+IDENTITY="Fabio Local Code Signing"
+if security find-certificate -c "$IDENTITY" >/dev/null 2>&1; then
+  codesign --force --sign "$IDENTITY" "$APP"
+else
+  echo "warning: no \"$IDENTITY\" certificate; signing ad hoc, so Accessibility won't survive this build." >&2
+  echo "         Run scripts/make-signing-cert.sh once to fix that." >&2
+  codesign --force --sign - "$APP"
+fi
 
 echo "==> Built $APP"

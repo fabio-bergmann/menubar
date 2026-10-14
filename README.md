@@ -39,10 +39,13 @@ Limits that come with it:
 Accessibility, to tell a click on empty menu bar space from a click on an
 icon, to list which apps have menu bar icons, and to open Notification
 Center from the clock while icons are hidden. Without it, On click icons
-stay visible (there'd be no way to show them) and Never still hides. The app is
-signed on this Mac without a certificate, so macOS forgets the permission
-with every update: Settings then shows **Allow Accessibility…**, which
-clears the old entry and asks again; switch it on.
+stay visible (there'd be no way to show them) and Never still hides.
+
+Builds are signed with a self-signed certificate in your login keychain, so
+macOS keeps the permission across updates. Make it once per Mac with
+`scripts/make-signing-cert.sh`; without it builds are signed ad hoc and
+lose the permission every time (Settings then shows **Allow
+Accessibility…**, which clears the old entry and asks again).
 
 ## Install and update
 
