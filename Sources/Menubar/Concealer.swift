@@ -69,6 +69,9 @@ final class Concealer: ObservableObject {
     private var retry: DispatchWorkItem?
     /// Bumped by every request, so a late answer to an older one is dropped.
     private var generation = 0
+    /// Lifts in progress (the clock, a newly started app). While any is,
+    /// new plans are only noted; the last `reassert()` puts the latest back.
+    private var lifts = 0
     private var runningObservation: NSKeyValueObservation?
     private let isPreview: Bool
 
@@ -92,6 +95,7 @@ final class Concealer: ObservableObject {
         guard !isPreview else { return }
         if plan == target, !force, failure == nil { return }
         target = plan
+        guard lifts == 0 else { return }
         generation += 1
         let generation = generation
 
@@ -132,15 +136,19 @@ final class Concealer: ObservableObject {
 
     /// Shows everything for a moment, keeping the plan to put back with
     /// `reassert()`. For the few things macOS refuses while icons are hidden.
+    /// Every lift needs its own reassert.
     func lift() {
         guard !isPreview else { return }
+        lifts += 1
         generation += 1
         release()
     }
 
-    /// Puts the current plan back after a `lift()`.
+    /// Ends a `lift()`. When it's the last one, the latest plan goes back.
     func reassert() {
-        apply(target, force: true)
+        guard !isPreview, lifts > 0 else { return }
+        lifts -= 1
+        if lifts == 0 { apply(target, force: true) }
     }
 
     func perform(_ action: Action) {

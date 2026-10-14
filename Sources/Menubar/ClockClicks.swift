@@ -67,9 +67,11 @@ final class ClockClicks {
             // ⌘-drag rearranges the bar and ⌃-click is a right click.
             let plain = event.modifierFlags.isDisjoint(with: [.command, .control])
             let inMenuBar = Self.isInMenuBar(location)
+            // NSScreen is the main thread's; the lookup below isn't.
+            let panelHeight = (NSScreen.screens.map(\.frame.height).min() ?? 0) / 2
             queue.async { [weak self] in
                 guard let self else { return }
-                guard plain, inMenuBar, !Self.isNotificationCenterOpen,
+                guard plain, inMenuBar, !Self.isNotificationCenterOpen(minimumHeight: panelHeight),
                       let clock = Self.clocks().first(where: { $0.frame.contains(location) }) else {
                     clickedClock = nil
                     return
@@ -145,14 +147,14 @@ final class ClockClicks {
     /// The panel is a window as tall as the screen; banners are a few rows
     /// tall and desktop widgets sit below the desktop. Owner, layer and bounds
     /// need no Screen Recording permission, unlike window names.
-    private static var isNotificationCenterOpen: Bool {
+    /// - Parameter minimumHeight: half the shortest screen's height.
+    private static func isNotificationCenterOpen(minimumHeight: CGFloat) -> Bool {
         let owners = Set(
             NSRunningApplication.runningApplications(withBundleIdentifier: notificationCenterBundleID).map(\.processIdentifier)
         )
         guard !owners.isEmpty,
               let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
                 as? [[String: Any]] else { return false }
-        let minimumHeight = (NSScreen.screens.map(\.frame.height).min() ?? 0) / 2
         return windows.contains { window in
             guard let pid = window[kCGWindowOwnerPID as String] as? pid_t, owners.contains(pid),
                   let layer = window[kCGWindowLayer as String] as? Int, layer >= 0,

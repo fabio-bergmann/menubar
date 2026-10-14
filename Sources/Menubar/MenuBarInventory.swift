@@ -125,12 +125,14 @@ final class MenuBarInventory: ObservableObject {
     /// Without Accessibility: apps that run without a Dock icon, which are
     /// nearly always menu bar apps. Regular apps with an icon go unlisted.
     private static func fallbackEntries() -> [Entry] {
-        NSWorkspace.shared.runningApplications
+        let entries = NSWorkspace.shared.runningApplications
             .filter { $0.activationPolicy == .accessory && $0 != .current }
-            .compactMap { app in
+            .compactMap { app -> Entry? in
                 guard let bundleID = app.bundleIdentifier, !bundleID.hasPrefix("com.apple.") else { return nil }
                 return Entry(bundleID: bundleID, name: name(of: app))
             }
+        // Two copies of one app are one row.
+        return Dictionary(entries.map { ($0.bundleID, $0) }, uniquingKeysWith: { first, _ in first }).values
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 

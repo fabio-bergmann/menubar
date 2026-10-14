@@ -24,25 +24,39 @@ public struct VisibilityPlan: Equatable, Sendable {
     ///
     /// - Parameters:
     ///   - tiers: the tier set for each app, by bundle id.
-    ///   - defaultTier: the tier of an app that has none yet.
+    ///   - defaultTier: the tier of an app that has none yet, such as one that
+    ///     just started and hasn't been looked at. Apple's own apps and
+    ///     `backgroundOnly` ones are left out of it and stay allowed until given
+    ///     a tier: some of Apple's never appear in the list (SystemUIServer
+    ///     hosts Siri, Time Machine and VPN), and hiding an app that can't have
+    ///     icons would only hold a restriction for nothing.
     ///   - running: the bundle ids of the apps running now.
+    ///   - seen: apps that ran earlier. They stay on the list, so an app that
+    ///     quits and starts again leaves the plan alone: every new plan costs
+    ///     a connection to MenuBarAgent that macOS keeps until this app quits.
+    ///   - backgroundOnly: apps that can't have menu bar icons.
     ///   - ownBundleID: this app, which always keeps its chevron.
     ///   - revealed: whether the chevron's section is open.
     public static func make(
         tiers: [String: Tier],
         defaultTier: Tier,
         running: Set<String>,
+        seen: Set<String> = [],
+        backgroundOnly: Set<String> = [],
         ownBundleID: String?,
         revealed: Bool
     ) -> VisibilityPlan? {
         func isHidden(_ bundleID: String) -> Bool {
-            bundleID != ownBundleID && (tiers[bundleID] ?? defaultTier).isHidden(revealed: revealed)
+            if bundleID == ownBundleID { return false }
+            if let tier = tiers[bundleID] { return tier.isHidden(revealed: revealed) }
+            if bundleID.hasPrefix("com.apple.") || backgroundOnly.contains(bundleID) { return false }
+            return defaultTier.isHidden(revealed: revealed)
         }
         guard running.contains(where: isHidden) else { return nil }
 
         // Apps that aren't running yet are listed too, so a visible one shows
         // its icon the moment it starts instead of after the next rebuild.
-        var allowed = running.union(tiers.keys).filter { !isHidden($0) }
+        var allowed = running.union(seen).union(tiers.keys).filter { !isHidden($0) }
         if let ownBundleID { allowed.insert(ownBundleID) }
         return VisibilityPlan(allowedBundleIDs: allowed.sorted(), allowedSystemItems: allSystemItems)
     }

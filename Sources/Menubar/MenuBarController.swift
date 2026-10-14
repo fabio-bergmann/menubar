@@ -21,6 +21,9 @@ final class MenuBarController {
     private var observers: [NSObjectProtocol] = []
     private var runningObservation: NSKeyValueObservation?
     private var runningPIDs = Set<pid_t>()
+    /// Every app seen running since launch, and which of those can't have UI.
+    private var seenApps = Set<String>()
+    private var seenBackgroundOnly = Set<String>()
     private var newcomers = Set<pid_t>()
     private var newcomerCheck: DispatchWorkItem?
     private var adopting = false
@@ -101,11 +104,18 @@ final class MenuBarController {
     /// - Parameter force: re-sends it even when unchanged, for after a wake.
     func apply(force: Bool = false) {
         guard started else { return }
-        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        let apps = NSWorkspace.shared.runningApplications
+        let running = Set(apps.compactMap(\.bundleIdentifier))
+        // A bundle id counts as background-only when no running copy may have UI.
+        let withUI = Set(apps.filter { $0.activationPolicy != .prohibited }.compactMap(\.bundleIdentifier))
+        seenApps.formUnion(running)
+        seenBackgroundOnly = seenBackgroundOnly.union(running.subtracting(withUI)).subtracting(withUI)
         let plan = VisibilityPlan.make(
             tiers: settings.tiers,
             defaultTier: settings.newAppTier,
             running: running,
+            seen: seenApps,
+            backgroundOnly: seenBackgroundOnly,
             ownBundleID: Bundle.main.bundleIdentifier,
             revealed: revealed
         )
@@ -208,7 +218,8 @@ final class MenuBarController {
     // MARK: - Hiding again
 
     private func checkRehide() {
-        guard revealed else { return }
+        // "Never" leaves the section open until the chevron is clicked again.
+        guard revealed, settings.rehideDelay > 0 else { return }
         if menuBarInUse() {
             lastActivity = Date()
             return

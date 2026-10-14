@@ -22,10 +22,14 @@ enum RestrictionProbe {
                 exit(1)
             }
             print("Holding after \(elapsed) ms: \(bundleID) hidden, \(plan.allowedBundleIDs.count) apps allowed")
+            var held: Any? = handle
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
-                MBRestrictionInvalidate(handle)
+                MBRestrictionInvalidate(held!)
+                // The last reference: MenuBarAgent should see the connection
+                // close now, not when the process exits a moment later.
+                held = nil
                 print("Released")
-                exit(0)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { exit(0) }
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) {

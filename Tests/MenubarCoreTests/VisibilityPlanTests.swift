@@ -46,6 +46,42 @@ final class VisibilityPlanTests: XCTestCase {
         XCTAssertEqual(result?.allowedBundleIDs, ["a", own])
     }
 
+    func testAppleAppsWithoutATierIgnoreTheDefault() {
+        // SystemUIServer hosts Siri and Time Machine and is never listed.
+        XCTAssertNil(plan([:], running: ["com.apple.systemuiserver"], defaultTier: .never))
+        let result = plan(["b": .never], running: ["com.apple.systemuiserver", "b"], defaultTier: .onClick)
+        XCTAssertEqual(result?.allowedBundleIDs, ["com.apple.systemuiserver", own])
+    }
+
+    func testAppleAppsWithATierFollowIt() {
+        let result = plan(["com.apple.weather": .never], running: ["com.apple.weather"])
+        XCTAssertEqual(result?.allowedBundleIDs, [own])
+    }
+
+    func testBackgroundOnlyAppsIgnoreTheDefault() {
+        XCTAssertNil(VisibilityPlan.make(
+            tiers: [:], defaultTier: .onClick, running: ["helper"], backgroundOnly: ["helper"],
+            ownBundleID: own, revealed: false
+        ))
+    }
+
+    func testAppsSeenEarlierStayOnTheList() {
+        let before = VisibilityPlan.make(
+            tiers: ["b": .never], defaultTier: .visible, running: ["a", "b"], seen: ["a", "b"],
+            ownBundleID: own, revealed: false
+        )
+        let afterAQuit = VisibilityPlan.make(
+            tiers: ["b": .never], defaultTier: .visible, running: ["b"], seen: ["a", "b"],
+            ownBundleID: own, revealed: false
+        )
+        XCTAssertEqual(before, afterAQuit)
+        // Nothing hidden running: still no restriction, whatever ran before.
+        XCTAssertNil(VisibilityPlan.make(
+            tiers: ["b": .never], defaultTier: .visible, running: ["a"], seen: ["a", "b"],
+            ownBundleID: own, revealed: false
+        ))
+    }
+
     func testOwnChevronIsNeverHidden() {
         let result = plan([own: .never, "b": .never], running: [own, "b"])
         XCTAssertEqual(result?.allowedBundleIDs, [own])

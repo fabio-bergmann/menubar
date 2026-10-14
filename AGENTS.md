@@ -99,6 +99,16 @@ scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
   quits (KVO on `runningApplications`; the launch notifications miss
   background agents). While nothing running needs hiding, no restriction is
   held at all, which also gives the clock and the indicators below back.
+  The "New icons" tier is written to an app when it's first seen; until then
+  it covers apps that just started, except Apple's own and background-only
+  ones, which stay allowed (SystemUIServer's Siri and Time Machine are never
+  listed, so they'd have no way back).
+- **Every new restriction costs a connection until the app quits.**
+  MenuBarClientCore opens one to MenuBarAgent per activation and keeps it
+  after `invalidate()` and after the assertion is freed (measured: the
+  server logs the close only at process exit). So the plan is kept stable:
+  apps seen running earlier stay on the allowlist (`seen`), and only a
+  never-seen app, a tier change, a chevron click or a lift makes a new one.
 - **Restrictions from different apps add up.** macOS shows an icon if any
   held restriction allows it, so another manager running alongside brings
   back what it doesn't hide too. Settings warns about the known ones.
@@ -122,8 +132,11 @@ scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
   after launch, so the chevron is in the bar first.
 - **The private API is wrapped defensively.** `MenuBarRestriction.m` checks
   every class and selector, catches exceptions, answers exactly once on the
-  main queue and gives up after 3 s. A new restriction is in place before the
-  old one is dropped, so changing it never flashes the whole bar.
+  main queue and gives up after 3 s (a yes after that is dropped again). A
+  new restriction is in place before the old one is dropped, so changing it
+  never flashes the whole bar. Lifts (the clock, a parked new icon) are
+  counted: while one is in progress a new plan is only noted, and the last
+  `reassert()` puts the latest back.
 - **Per app, not per icon.** macOS hides by bundle id, so an app's icons go
   together. A status item owned by a helper process is listed (and tiered)
   under the helper's own bundle id.
