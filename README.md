@@ -22,14 +22,25 @@ private API, so a macOS update could move it; Menubar then hides nothing and
 says so in Settings, rather than hiding the wrong things. Quitting Menubar,
 or a crash, shows every icon again.
 
-Two limits come with it. Tiers are per app: an app with two icons hides or
-shows both. And Apple's own icons (clock, Wi-Fi, Battery, Sound, Control
-Center) always stay; switch those off in System Settings › Control Center.
+Limits that come with it:
+
+- Tiers are per app: an app with two icons hides or shows both.
+- Apple's own icons (clock, Wi-Fi, Battery, Sound, Control Center) always
+  stay; switch those off in System Settings › Control Center.
+- While icons are hidden, macOS also hides Now Playing, Focus and the camera
+  and microphone indicator (the coloured dot stays).
+- While icons are hidden, macOS ignores clicks on the clock. Menubar presses
+  it for you, which needs Accessibility; hidden icons flash up for a moment
+  as it does.
 
 ## Permissions
 
-Accessibility, to list which apps have menu bar icons. Hiding works without
-it, from a shorter list (apps without a Dock icon).
+Accessibility, to list which apps have menu bar icons and to open
+Notification Center from the clock while icons are hidden. Hiding works
+without it, from a shorter list (apps without a Dock icon). The app is
+signed on this Mac without a certificate, so macOS forgets the permission
+with every update: Settings then shows **Allow Accessibility…**, which
+clears the old entry and asks again; switch it on.
 
 ## Install and update
 

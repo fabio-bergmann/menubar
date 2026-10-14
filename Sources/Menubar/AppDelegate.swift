@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let inventory = MenuBarInventory()
     private let concealer = Concealer()
     private let updates = UpdateService()
+    private var clockClicks: ClockClicks?
     private var statusItem: StatusItemController?
     private var controller: MenuBarController?
     private var settingsWindow: SettingsWindowController?
@@ -43,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         self.statusItem = statusItem
         self.controller = controller
+        clockClicks = ClockClicks(concealer: concealer)
         self.settingsWindow = settingsWindow
         controller.start()
 

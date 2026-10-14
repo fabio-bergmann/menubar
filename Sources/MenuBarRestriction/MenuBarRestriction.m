@@ -64,17 +64,27 @@ void MBRestrictionActivate(NSArray<NSNumber *> *allowedSystemItems,
             });
             return;
         }
+        // MenuBarAgent answers on a queue of its own, and nothing promises it
+        // answers once, or at all. Everything below runs on the main queue, so
+        // `answered` needs no lock: the first answer wins, the timeout included.
+        __block BOOL answered = NO;
+        void (^finish)(NSError *) = ^(NSError *error) {
+            if (answered) return;
+            answered = YES;
+            if (error) {
+                MBRestrictionInvalidate(assertion);
+                completion(nil, error);
+            } else {
+                completion(assertion, nil);
+            }
+        };
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            finish(MBRestrictionError(4, @"macOS didn't answer within 3 seconds."));
+        });
         // The handler takes just an error, like the XPC call behind it.
         ((void (*)(id, SEL, id, void (^)(NSError *)))objc_msgSend)(
             assertion, activateSelector, configuration, ^(NSError *error) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (error) {
-                        MBRestrictionInvalidate(assertion);
-                        completion(nil, error);
-                    } else {
-                        completion(assertion, nil);
-                    }
-                });
+                dispatch_async(dispatch_get_main_queue(), ^{ finish(error); });
             });
     } @catch (NSException *exception) {
         NSString *reason = exception.reason ?: exception.name;

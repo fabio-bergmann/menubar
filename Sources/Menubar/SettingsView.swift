@@ -55,9 +55,10 @@ struct SettingsView: View {
         }
         if !inventory.isTrusted {
             notice(
-                "Allow \(AppVariant.name) in Accessibility to list every app with a menu bar icon. "
-                    + "Hiding works without it; only this list is shorter.",
-                action: ("Open Accessibility Settings", openAccessibilitySettings)
+                "Allow \(AppVariant.name) in Accessibility. It lists every app with a menu bar icon, "
+                    + "and keeps the clock opening Notification Center while icons are hidden. "
+                    + "Hiding itself works without it.",
+                action: ("Allow Accessibility…", inventory.requestTrust)
             )
         }
     }
@@ -81,13 +82,6 @@ struct SettingsView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.orange.opacity(0.1))
         )
-    }
-
-    private func openAccessibilitySettings() {
-        inventory.requestTrust()
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-        }
     }
 
     // MARK: - Icons
@@ -118,7 +112,9 @@ struct SettingsView: View {
                 }
             }
             Text("Each app's icons move together; macOS hides menu bar icons per app. "
-                + "Apple's own icons (clock, Wi-Fi, Battery, Sound…) are set in System Settings › Control Center.")
+                + "Apple's own icons (clock, Wi-Fi, Battery, Sound…) are set in System Settings › Control Center. "
+                + "While icons are hidden, macOS also hides Now Playing, Focus and the camera and microphone indicator "
+                + "(the coloured dot stays).")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

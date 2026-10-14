@@ -42,6 +42,8 @@ final class Concealer: ObservableObject {
     }
 
     @Published private(set) var problem: Problem?
+    /// Whether macOS is hiding icons for this app right now.
+    @Published private(set) var isHolding = false
 
     /// Menu bar managers that hide icons the same way, by bundle id. Each
     /// build of this app counts the other one too (`scripts/dev.sh`).
@@ -56,22 +58,24 @@ final class Concealer: ObservableObject {
         "dev.fabio.menubar.dev": "Menubar Dev",
     ]
 
-    private var handle: Any?
+    private var handle: Any? {
+        didSet { if (handle != nil) != isHolding { isHolding = handle != nil } }
+    }
     /// The last plan asked for; nil means no restriction.
     private var target: VisibilityPlan?
     private var failure: String?
+    /// Turned-down requests in a row, for spacing out the retries.
+    private var failures = 0
+    private var retry: DispatchWorkItem?
     /// Bumped by every request, so a late answer to an older one is dropped.
     private var generation = 0
-    private var observers: [NSObjectProtocol] = []
+    private var runningObservation: NSKeyValueObservation?
     private let isPreview: Bool
 
     init() {
         isPreview = false
-        let center = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.checkForOtherManagers()
-            })
+        runningObservation = NSWorkspace.shared.observe(\.runningApplications) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.checkForOtherManagers() }
         }
         checkForOtherManagers()
     }
@@ -80,10 +84,6 @@ final class Concealer: ObservableObject {
     init(previewProblem: Problem?) {
         isPreview = true
         problem = previewProblem
-    }
-
-    deinit {
-        observers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
     }
 
     /// Hands macOS the plan, or drops the restriction for a nil one.
@@ -118,13 +118,29 @@ final class Concealer: ObservableObject {
                 self.handle = handle
                 if let old { MBRestrictionInvalidate(old) }
                 self.failure = nil
+                self.failures = 0
+                self.retry?.cancel()
             } else {
                 NSLog("Menubar: restriction refused: \(error?.localizedDescription ?? "no reason given")")
                 self.release()
                 self.failure = error?.localizedDescription ?? "No reason given."
+                self.scheduleRetry()
             }
             self.updateProblem()
         }
+    }
+
+    /// Shows everything for a moment, keeping the plan to put back with
+    /// `reassert()`. For the few things macOS refuses while icons are hidden.
+    func lift() {
+        guard !isPreview else { return }
+        generation += 1
+        release()
+    }
+
+    /// Puts the current plan back after a `lift()`.
+    func reassert() {
+        apply(target, force: true)
     }
 
     func perform(_ action: Action) {
@@ -137,6 +153,18 @@ final class Concealer: ObservableObject {
     func checkForOtherManagers() {
         guard !isPreview else { return }
         updateProblem()
+    }
+
+    /// MenuBarAgent may be restarting or busy; ask again, less often over time.
+    private func scheduleRetry() {
+        failures += 1
+        retry?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            apply(target, force: true)
+        }
+        retry = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + (failures < 3 ? 10 : 60), execute: work)
     }
 
     private func release() {

@@ -14,8 +14,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// YES when this macOS has the restriction (27.0 and, until Apple moves it, later).
 BOOL MBRestrictionIsAvailable(void);
 
-/// Holds a new restriction. `completion` runs on the main queue with the
-/// handle to keep (pass it to MBRestrictionInvalidate to drop it), or an error.
+/// Holds a new restriction. `completion` runs once, on the main queue, within
+/// 3 seconds: with the handle to keep (pass it to MBRestrictionInvalidate to
+/// drop it), or an error.
 void MBRestrictionActivate(NSArray<NSNumber *> *allowedSystemItems,
                            NSArray<NSString *> *allowedBundleIdentifiers,
                            void (^completion)(id _Nullable handle, NSError *_Nullable error));

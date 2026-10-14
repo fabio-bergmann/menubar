@@ -18,9 +18,15 @@ final class MenuBarInventory: ObservableObject {
     @Published private(set) var entries: [Entry] = []
     @Published private(set) var isTrusted = AXIsProcessTrusted()
 
-    /// Apple's own items (clock, Wi-Fi, Control Center…) are kept by macOS's
-    /// numeric ids, not by bundle id, so these hosts are left off the list.
-    static let systemHosts: Set<String> = ["com.apple.controlcenter", "com.apple.systemuiserver"]
+    /// Left off the list: the processes that draw the bar and host Apple's
+    /// own items. Control Center's items are kept by macOS's numeric ids, and
+    /// SystemUIServer hosts Siri, Time Machine, VPN and Eject as one bundle,
+    /// which System Settings turns on and off item by item instead. They stay
+    /// allowed, like every running app without a tier.
+    static let systemHosts: Set<String> = [
+        "com.apple.controlcenter", "com.apple.systemuiserver", "com.apple.MenuBarAgent",
+        "com.apple.notificationcenterui", "com.apple.loginwindow",
+    ]
 
     private let queue = DispatchQueue(label: "dev.fabio.menubar.inventory", qos: .userInitiated)
     private var scanning = false
@@ -38,8 +44,18 @@ final class MenuBarInventory: ObservableObject {
         isTrusted = trusted
     }
 
-    /// Asks macOS to show the Accessibility prompt, once per launch at most.
+    /// Asks macOS for Accessibility afresh. Each build is signed anew, and a
+    /// grant made to an earlier build stays switched on in System Settings
+    /// while doing nothing. So the old entry is cleared first, and macOS's
+    /// prompt then adds one for this build, ready to be switched on.
     func requestTrust() {
+        if let bundleID = Bundle.main.bundleIdentifier {
+            let reset = Process()
+            reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            reset.arguments = ["reset", "Accessibility", bundleID]
+            try? reset.run()
+            reset.waitUntilExit()
+        }
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         isTrusted = AXIsProcessTrustedWithOptions(options)
     }
@@ -57,13 +73,22 @@ final class MenuBarInventory: ObservableObject {
             return
         }
         scanning = true
+        // Only .app bundles: XPC services and WebKit helpers never have menu
+        // bar items, and some never answer Accessibility either.
         let apps = NSWorkspace.shared.runningApplications.compactMap { app -> (pid_t, Entry)? in
             guard let bundleID = app.bundleIdentifier, app != .current, !app.isTerminated,
-                  !Self.systemHosts.contains(bundleID) else { return nil }
+                  app.bundleURL?.pathExtension == "app", !Self.systemHosts.contains(bundleID) else { return nil }
             return (app.processIdentifier, Entry(bundleID: bundleID, name: Self.name(of: app)))
         }
         queue.async { [weak self] in
-            let found = apps.filter { Self.hasMenuBarItems(pid: $0.0) }.map(\.1)
+            // Side by side, so one slow app costs its own timeout and no more.
+            var hasItems = [Bool](repeating: false, count: apps.count)
+            hasItems.withUnsafeMutableBufferPointer { results in
+                DispatchQueue.concurrentPerform(iterations: apps.count) { index in
+                    results[index] = Self.hasMenuBarItems(pid: apps[index].0)
+                }
+            }
+            let found = apps.indices.filter { hasItems[$0] }.map { apps[$0].1 }
             let unique = Dictionary(found.map { ($0.bundleID, $0) }, uniquingKeysWith: { first, _ in first })
             let sorted = unique.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             DispatchQueue.main.async {

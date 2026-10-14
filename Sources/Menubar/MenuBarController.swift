@@ -3,8 +3,8 @@ import Combine
 import MenubarCore
 
 /// Decides what the menu bar shows and keeps macOS told: on every tier
-/// change, chevron click, app launch or quit, and wake. Also closes the
-/// chevron's section again once the menu bar has been left alone.
+/// change, chevron click, app launch or quit, wake and display change. Also
+/// closes the chevron's section again once the menu bar has been left alone.
 final class MenuBarController {
     private let settings: AppSettings
     private let concealer: Concealer
@@ -12,11 +12,18 @@ final class MenuBarController {
     private let statusItem: StatusItemController
 
     private(set) var revealed = false
+    /// Nothing is hidden until a second after launch (see `start`).
+    private var started = false
     private var lastActivity = Date()
     private var rehideTimer: Timer?
     private var rescanWork: DispatchWorkItem?
     private var subscriptions = Set<AnyCancellable>()
     private var observers: [NSObjectProtocol] = []
+    private var runningObservation: NSKeyValueObservation?
+    private var runningPIDs = Set<pid_t>()
+    private var newcomers = Set<pid_t>()
+    private var newcomerCheck: DispatchWorkItem?
+    private var adopting = false
 
     init(settings: AppSettings, concealer: Concealer, inventory: MenuBarInventory, statusItem: StatusItemController) {
         self.settings = settings
@@ -35,28 +42,40 @@ final class MenuBarController {
             }
             .store(in: &subscriptions)
 
-        let center = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                // Straight away, so a hidden app's icon never gets a moment on
-                // screen and a visible one isn't kept off it.
-                self?.apply()
-                // An app adds its icon a little after it starts.
-                self?.scheduleRescan(after: 3)
-            })
+        // Every app that starts or quits, background agents included (those
+        // don't all post the launch notifications).
+        // The change only carries the apps that came or went, so the whole
+        // list is read again each time.
+        runningObservation = NSWorkspace.shared.observe(\.runningApplications) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.runningAppsChanged() }
         }
+        runningPIDs = Set(NSWorkspace.shared.runningApplications.map(\.processIdentifier))
+        let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.apply(force: true)
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
             self?.apply(force: true)
         })
     }
 
     deinit {
-        observers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+        observers.forEach {
+            NSWorkspace.shared.notificationCenter.removeObserver($0)
+            NotificationCenter.default.removeObserver($0)
+        }
     }
 
+    /// The chevron has to be in the bar before the first restriction: macOS
+    /// may park an item that arrives while one is held. Hence the wait.
     func start() {
-        apply()
         inventory.scan()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            self?.started = true
+            self?.apply()
+        }
     }
 
     func toggle() {
@@ -81,6 +100,7 @@ final class MenuBarController {
     /// Works out the plan for now and hands it to macOS.
     /// - Parameter force: re-sends it even when unchanged, for after a wake.
     func apply(force: Bool = false) {
+        guard started else { return }
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
         let plan = VisibilityPlan.make(
             tiers: settings.tiers,
@@ -97,6 +117,92 @@ final class MenuBarController {
         let work = DispatchWorkItem { [weak self] in self?.inventory.scan() }
         rescanWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    private func runningAppsChanged() {
+        let apps = NSWorkspace.shared.runningApplications
+        let pids = Set(apps.map(\.processIdentifier))
+        let started = apps.filter { !runningPIDs.contains($0.processIdentifier) }
+        runningPIDs = pids
+        // Straight away, so a hidden app's icon never gets a moment on screen
+        // and a visible one isn't kept off it.
+        apply()
+        // An app adds its icon a little after it starts.
+        scheduleRescan(after: 3)
+        watchNewcomers(started)
+    }
+
+    // MARK: - Newly started apps
+
+    /// macOS can park the icon of an app that starts while icons are hidden
+    /// (off screen, no width), even when the app is allowed, until a moment
+    /// with no restriction at all. Pelmet saw this; others saw icons land
+    /// fine. So a little after a visible app starts its icons are looked at,
+    /// and if one is parked the restriction is lifted until it lands, for 2.5
+    /// seconds at most. Needs Accessibility to look; without it nothing is done.
+    private func watchNewcomers(_ apps: [NSRunningApplication]) {
+        let shown = apps.filter { app in
+            guard let bundleID = app.bundleIdentifier else { return false }
+            return !settings.tier(of: bundleID).isHidden(revealed: revealed)
+        }
+        guard !shown.isEmpty else { return }
+        newcomers.formUnion(shown.map(\.processIdentifier))
+        newcomerCheck?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.checkNewcomers() }
+        newcomerCheck = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
+    }
+
+    private func checkNewcomers() {
+        let pids = newcomers
+        newcomers = []
+        guard concealer.isHolding, !adopting, AXIsProcessTrusted() else { return }
+        let screens = Self.displayBounds()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let parked = pids.filter { Self.hasParkedItem(pid: $0, screens: screens) }
+            guard !parked.isEmpty else { return }
+            DispatchQueue.main.async { self?.adopt(parked, screens: screens) }
+        }
+    }
+
+    private func adopt(_ pids: Set<pid_t>, screens: [CGRect]) {
+        guard concealer.isHolding, !adopting else { return }
+        adopting = true
+        NSLog("Menubar: lifting until \(pids.count) new app(s) get their icons on screen")
+        concealer.lift()
+        let deadline = Date().addingTimeInterval(2.5)
+        func poll() {
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                let parked = pids.contains { Self.hasParkedItem(pid: $0, screens: screens) }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if parked, Date() < deadline {
+                        poll()
+                    } else {
+                        self.adopting = false
+                        self.concealer.reassert()
+                    }
+                }
+            }
+        }
+        poll()
+    }
+
+    /// An icon macOS hasn't placed: no width, or on no display.
+    private static func hasParkedItem(pid: pid_t, screens: [CGRect]) -> Bool {
+        guard let frames = AX.menuBarItemFrames(pid: pid) else { return false }
+        return frames.contains { frame in
+            frame.width < 4 || !screens.contains { $0.intersects(frame) }
+        }
+    }
+
+    /// Every display, in the top-left-origin coordinates Accessibility uses.
+    private static func displayBounds() -> [CGRect] {
+        var count: UInt32 = 0
+        CGGetActiveDisplayList(0, nil, &count)
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        CGGetActiveDisplayList(count, &displays, &count)
+        return displays.prefix(Int(count)).map(CGDisplayBounds)
     }
 
     // MARK: - Hiding again

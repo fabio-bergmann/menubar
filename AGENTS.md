@@ -33,13 +33,19 @@ relaunches it within a few seconds of any change under `Sources/` or
 `Support/`. Two copies would each ask macOS to hide a different set of icons,
 so the script quits the installed Menubar while it runs and reopens it after.
 
+- The dev build runs from `/Applications/Menubar Dev.app` (removed again on
+  Ctrl-C). macOS only keeps an allowed app's icons for a copy in
+  `/Applications`; one in `build/` or `~/Applications` hides its own chevron.
 - It starts the app with `open`, not by running the binary: macOS only gives
-  a menu bar item to an app it launched itself, and the allowlist only honours
-  a copy LaunchServices knows. Anything the app prints lands in
-  `build/dev.log`.
+  a menu bar item to an app it launched itself. Anything the app prints lands
+  in `build/dev.log`.
 - Every rebuild is a new ad-hoc signature, and macOS ties the Accessibility
-  grant to the signature, so after a rebuild the grant is stale. Hiding
-  doesn't need it; only the full app list in Settings does.
+  grant to the signature, so after a rebuild the grant is stale (still
+  switched on in System Settings, doing nothing). Hiding doesn't need it; the
+  full app list and the clock do. Settings' **Allow Accessibility…** runs
+  `tccutil reset Accessibility <bundle id>` and prompts again. A stable
+  self-signed certificate would end this, but adding one changes the login
+  keychain, so that's Fabio's call.
 
 ## Commands
 
@@ -48,7 +54,9 @@ scripts/dev.sh                     # the dev loop above
 swift build                        # compile
 swift test                         # unit tests (MenubarCore)
 swift run Menubar --render-previews /tmp/menubar-previews
-.build/debug/Menubar --try-hiding <bundle id> [seconds]   # hide one app's icons briefly
+"/Applications/Menubar Dev.app/Contents/MacOS/Menubar" --try-hiding <bundle id> [seconds]
+                                   # hide one app's icons briefly; run from an
+                                   # .app (a bare binary is answered but hides nothing)
 scripts/build-app.sh               # build/Menubar.app, not installed
 scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
 ```
@@ -62,8 +70,9 @@ scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
   exceptions are caught. The only code that touches it.
 - `Sources/Menubar`: the AppKit and SwiftUI shell. `MenuBarController`
   decides when to re-plan (tier change, chevron click, app launch or quit,
-  wake) and when the section closes again. `Concealer` holds the restriction
-  and reports problems. `MenuBarInventory` lists apps with menu bar icons
+  wake, display change) and when the section closes again. `Concealer` holds
+  the restriction and reports problems. `ClockClicks` keeps the clock opening
+  Notification Center. `MenuBarInventory` lists apps with menu bar icons
   through Accessibility. `StatusItemController` and `ChevronRenderer` are the
   chevron; `SettingsWindowController` and `SettingsView` are Settings;
   `UpdateService` is the Update button.
@@ -84,9 +93,37 @@ scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
   out the fragile part of other managers (faking drags), and it's why there
   is no layout editor.
 - **The list is an allowlist, so new apps are hidden until re-planned.** The
-  plan lists every running app that isn't hidden, plus remembered visible
-  ones, and is rebuilt the moment any app launches or quits. While nothing
-  running needs hiding, no restriction is held at all.
+  plan lists every running app that isn't hidden (Apple's background apps
+  included: SystemUIServer hosts Siri, Time Machine and VPN), plus
+  remembered visible ones, and is rebuilt the moment any app launches or
+  quits (KVO on `runningApplications`; the launch notifications miss
+  background agents). While nothing running needs hiding, no restriction is
+  held at all, which also gives the clock and the indicators below back.
+- **Restrictions from different apps add up.** macOS shows an icon if any
+  held restriction allows it, so another manager running alongside brings
+  back what it doesn't hide too. Settings warns about the known ones.
+- **What macOS hides regardless.** While any restriction is held: Now
+  Playing, Focus, the camera and microphone capsule (the dot stays), Live
+  Activities, AirDrop, a running Timer. And a helper app outside
+  `/Applications` (iStat Menus' used to be) loses its icon whatever its tier.
+  Nothing here works around those; Settings mentions the first three.
+- **The clock is pressed for macOS.** While icons are hidden MenuBarAgent
+  ignores the clock (exam mode keeps Notification Center shut). `ClockClicks`
+  watches clicks on it, lifts the restriction, waits 30 ms, presses the clock
+  through Accessibility and restores the restriction: Hidden Bar's approach
+  (PR #453, MIT), measured there. Hidden icons show for under a second while
+  it does; macOS keeps them up that long however soon the restriction comes
+  back. Without Accessibility the clock stays dead while icons are hidden.
+- **New apps get looked at.** macOS can park an icon that arrives while a
+  restriction is held (no width, off screen) until there's a moment with
+  none. 2.5 s after a visible app starts, its icons are checked through
+  Accessibility, and a parked one gets the restriction lifted until it lands
+  (2.5 s at most). For the same reason the first restriction waits a second
+  after launch, so the chevron is in the bar first.
+- **The private API is wrapped defensively.** `MenuBarRestriction.m` checks
+  every class and selector, catches exceptions, answers exactly once on the
+  main queue and gives up after 3 s. A new restriction is in place before the
+  old one is dropped, so changing it never flashes the whole bar.
 - **Per app, not per icon.** macOS hides by bundle id, so an app's icons go
   together. A status item owned by a helper process is listed (and tiered)
   under the helper's own bundle id.

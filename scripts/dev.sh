@@ -6,13 +6,18 @@
 # Two copies would each ask macOS to hide a different set of icons, so the
 # installed Menubar is quit while this runs and reopened when it stops.
 #
+# It runs from /Applications/Menubar Dev.app, removed again on Ctrl-C: macOS
+# only lets an app keep its own menu bar icon past a restriction when it runs
+# from /Applications. A copy in build/ would hide its own chevron.
+#
 #   scripts/dev.sh     # leave it running in a terminal tab; Ctrl-C stops it
 #
 # A build that fails prints its errors and leaves the last good build running.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="$ROOT/build/Menubar Dev.app"
+BUILT="$ROOT/build/Menubar Dev.app"
+APP="/Applications/Menubar Dev.app"
 BIN="$APP/Contents/MacOS/Menubar"
 BUILD_LOG="$(mktemp -t menubar-dev)"
 APP_LOG="$ROOT/build/dev.log"
@@ -31,6 +36,7 @@ INSTALLED_WAS_RUNNING=""
 
 cleanup() {
   stop_app
+  rm -rf "$APP"
   [ -n "$INSTALLED_WAS_RUNNING" ] && open -g "$INSTALLED"
   [ -n "$TAIL_PID" ] && kill "$TAIL_PID" 2>/dev/null
   rm -f "$BUILD_LOG"
@@ -50,6 +56,8 @@ rebuild() {
   local started=$SECONDS
   if MENUBAR_VARIANT=dev bash "$ROOT/scripts/build-app.sh" >"$BUILD_LOG" 2>&1; then
     stop_app
+    rm -rf "$APP"
+    ditto "$BUILT" "$APP"
     # Through LaunchServices, not by running the binary: macOS only gives a
     # menu bar item to an app it launched itself. The price is that the app
     # isn't our child, so its output comes back through a log file.
