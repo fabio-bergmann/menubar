@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = AppSettings()
@@ -6,7 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let concealer = Concealer()
     private let updates = UpdateService()
     private var clockClicks: ClockClicks?
-    private var statusItem: StatusItemController?
+    private var barClicks: BarClicks?
     private var controller: MenuBarController?
     private var settingsWindow: SettingsWindowController?
     private var settingsRescan: Timer?
@@ -17,10 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let statusItem = StatusItemController()
-        let controller = MenuBarController(
-            settings: settings, concealer: concealer, inventory: inventory, statusItem: statusItem
-        )
+        let controller = MenuBarController(settings: settings, concealer: concealer, inventory: inventory)
         let settingsWindow = SettingsWindowController { [settings, inventory, concealer, updates] in
             SettingsView(settings: settings, inventory: inventory, hiding: concealer, updates: updates)
         }
@@ -39,24 +37,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settingsRescan?.invalidate()
             self?.settingsRescan = nil
         }
-        statusItem.onToggle = { controller.toggle() }
-        statusItem.onShowSettings = { settingsWindow.show() }
+        let barClicks = BarClicks(concealer: concealer)
+        barClicks.onClick = { controller.toggle() }
 
-        self.statusItem = statusItem
         self.controller = controller
+        self.barClicks = barClicks
         clockClicks = ClockClicks(concealer: concealer)
         self.settingsWindow = settingsWindow
         controller.start()
 
-        // The first launch opens Settings, since nothing is hidden until tiers are picked.
+        // There's nothing in the menu bar to open Settings from, so it opens
+        // by itself the first time, since nothing is hidden until tiers are
+        // picked, and whenever Accessibility is missing, which every update of
+        // an ad-hoc signed app causes. Not for the dev build, which rebuilds
+        // on every save.
         let firstLaunchKey = "hasLaunchedBefore"
-        if !UserDefaults.standard.bool(forKey: firstLaunchKey) {
-            UserDefaults.standard.set(true, forKey: firstLaunchKey)
+        let firstLaunch = !UserDefaults.standard.bool(forKey: firstLaunchKey)
+        UserDefaults.standard.set(true, forKey: firstLaunchKey)
+        if firstLaunch || (!AXIsProcessTrusted() && !AppVariant.isDev) {
             settingsWindow.show()
         }
     }
 
-    /// Opening the app again from Finder or Spotlight brings up Settings.
+    /// Opening the app again (Spotlight, Raycast, Finder) brings up Settings.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         settingsWindow?.show()
         return false

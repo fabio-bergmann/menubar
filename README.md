@@ -6,11 +6,12 @@ gets one of three tiers:
 | Tier | The app's icons |
 | --- | --- |
 | **Always** | stay in the menu bar |
-| **On click** | show when you click Menubar's chevron, and hide again once the menu bar has been left alone for a while |
+| **On click** | show when you click empty space on the right half of the menu bar, and hide again on the next click or once the menu bar has been left alone for a while |
 | **Never** | never show |
 
-Right-click the chevron for Settings, where every app with a menu bar icon is
-listed with its tier. That's all it does.
+Menubar has no icon of its own. Open it again (Spotlight, Raycast) for
+Settings, where every app with a menu bar icon is listed with its tier.
+That's all it does.
 
 ## How it hides
 
@@ -35,9 +36,10 @@ Limits that come with it:
 
 ## Permissions
 
-Accessibility, to list which apps have menu bar icons and to open
-Notification Center from the clock while icons are hidden. Hiding works
-without it, from a shorter list (apps without a Dock icon). The app is
+Accessibility, to tell a click on empty menu bar space from a click on an
+icon, to list which apps have menu bar icons, and to open Notification
+Center from the clock while icons are hidden. Without it, On click icons
+stay visible (there'd be no way to show them) and Never still hides. The app is
 signed on this Mac without a certificate, so macOS forgets the permission
 with every update: Settings then shows **Allow Accessibility…**, which
 clears the old entry and asks again; switch it on.

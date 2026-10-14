@@ -3,13 +3,13 @@ import Combine
 import MenubarCore
 
 /// Decides what the menu bar shows and keeps macOS told: on every tier
-/// change, chevron click, app launch or quit, wake and display change. Also
-/// closes the chevron's section again once the menu bar has been left alone.
+/// change, click on empty menu bar space, app launch or quit, wake and display
+/// change. Also closes the On click section again once the menu bar has been
+/// left alone.
 final class MenuBarController {
     private let settings: AppSettings
     private let concealer: Concealer
     private let inventory: MenuBarInventory
-    private let statusItem: StatusItemController
 
     private(set) var revealed = false
     /// Nothing is hidden until a second after launch (see `start`).
@@ -28,11 +28,10 @@ final class MenuBarController {
     private var newcomerCheck: DispatchWorkItem?
     private var adopting = false
 
-    init(settings: AppSettings, concealer: Concealer, inventory: MenuBarInventory, statusItem: StatusItemController) {
+    init(settings: AppSettings, concealer: Concealer, inventory: MenuBarInventory) {
         self.settings = settings
         self.concealer = concealer
         self.inventory = inventory
-        self.statusItem = statusItem
 
         // objectWillChange fires before the new value lands, so apply on the next turn.
         settings.objectWillChange
@@ -62,17 +61,29 @@ final class MenuBarController {
         ) { [weak self] _ in
             self?.apply(force: true)
         })
+        // Posted when any app's Accessibility switch changes; the new state
+        // takes a moment to read back.
+        observers.append(DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.accessibility.api"), object: nil, queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self?.apply()
+                self?.inventory.scan()
+            }
+        })
     }
 
     deinit {
         observers.forEach {
             NSWorkspace.shared.notificationCenter.removeObserver($0)
             NotificationCenter.default.removeObserver($0)
+            DistributedNotificationCenter.default().removeObserver($0)
         }
     }
 
-    /// The chevron has to be in the bar before the first restriction: macOS
-    /// may park an item that arrives while one is held. Hence the wait.
+    /// Waits a second before the first restriction, so the menu bar has
+    /// settled after login: macOS may park an icon that arrives while one is
+    /// held.
     func start() {
         inventory.scan()
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
@@ -89,7 +100,6 @@ final class MenuBarController {
         guard revealed != self.revealed else { return }
         self.revealed = revealed
         lastActivity = Date()
-        statusItem.setRevealed(revealed)
         apply()
         rehideTimer?.invalidate()
         rehideTimer = nil
@@ -117,7 +127,9 @@ final class MenuBarController {
             seen: seenApps,
             backgroundOnly: seenBackgroundOnly,
             ownBundleID: Bundle.main.bundleIdentifier,
-            revealed: revealed
+            // Without Accessibility a click on the menu bar can't be told
+            // from a click on an icon, so On click icons would be out of reach.
+            revealed: revealed || !AXIsProcessTrusted()
         )
         concealer.apply(plan, force: force)
     }
@@ -218,7 +230,7 @@ final class MenuBarController {
     // MARK: - Hiding again
 
     private func checkRehide() {
-        // "Never" leaves the section open until the chevron is clicked again.
+        // "Never" keeps them showing until the menu bar is clicked again.
         guard revealed, settings.rehideDelay > 0 else { return }
         if menuBarInUse() {
             lastActivity = Date()

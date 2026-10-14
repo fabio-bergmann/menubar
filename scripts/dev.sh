@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # The "localhost" for this app. Builds the working tree, uncommitted edits
 # included, as "Menubar Dev" and relaunches it whenever a source file
-# changes. It has its own settings and an orange dot on its chevron.
+# changes. It has its own settings.
 #
 # Two copies would each ask macOS to hide a different set of icons, so the
 # installed Menubar is quit while this runs and reopened when it stops.
 #
-# It runs from /Applications/Menubar Dev.app, removed again on Ctrl-C: macOS
-# only lets an app keep its own menu bar icon past a restriction when it runs
-# from /Applications. A copy in build/ would hide its own chevron.
+# It runs from /Applications/Menubar Dev.app, removed again on Ctrl-C, like
+# the installed app: macOS only honours its allowlist for apps there.
 #
 #   scripts/dev.sh     # leave it running in a terminal tab; Ctrl-C stops it
 #

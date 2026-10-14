@@ -24,7 +24,7 @@ struct SettingsView: View {
             }
             Divider()
             HStack {
-                Text("Clicking the chevron shows the icons set to On click.")
+                Text("Click empty menu bar space on the right to show On click icons.")
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("Quit \(AppVariant.name)") { NSApp.terminate(nil) }
@@ -55,9 +55,10 @@ struct SettingsView: View {
         }
         if !inventory.isTrusted {
             notice(
-                "Allow \(AppVariant.name) in Accessibility. It lists every app with a menu bar icon, "
-                    + "and keeps the clock opening Notification Center while icons are hidden. "
-                    + "Hiding itself works without it.",
+                "Allow \(AppVariant.name) in Accessibility so it can tell a click on empty menu bar space "
+                    + "from a click on an icon. Until then, On click icons stay visible. "
+                    + "It also lists every app with a menu bar icon here and keeps the clock opening "
+                    + "Notification Center while icons are hidden.",
                 action: ("Allow Accessibility…", inventory.requestTrust)
             )
         }

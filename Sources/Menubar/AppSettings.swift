@@ -24,7 +24,7 @@ final class AppSettings: ObservableObject {
     @Published var knownApps: [KnownApp] { didSet { save(knownApps, forKey: Key.knownApps) } }
     /// Where an icon goes the first time it's seen.
     @Published var newAppTier: Tier { didSet { defaults.set(newAppTier.rawValue, forKey: Key.newAppTier) } }
-    /// Seconds before the chevron's section closes by itself; 0 keeps it open.
+    /// Seconds before the On click icons hide again by themselves; 0 keeps them showing.
     @Published var rehideDelay: Double { didSet { defaults.set(rehideDelay, forKey: Key.rehideDelay) } }
 
     static let rehideChoices: [Double] = [5, 10, 30, 60, 0]

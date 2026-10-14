@@ -62,7 +62,10 @@ final class Concealer: ObservableObject {
         didSet { if (handle != nil) != isHolding { isHolding = handle != nil } }
     }
     /// The last plan asked for; nil means no restriction.
-    private var target: VisibilityPlan?
+    private var target: VisibilityPlan? {
+        didSet { targetAllowed = Set(target?.allowedBundleIDs ?? []) }
+    }
+    private var targetAllowed = Set<String>()
     private var failure: String?
     /// Turned-down requests in a row, for spacing out the retries.
     private var failures = 0
@@ -142,6 +145,11 @@ final class Concealer: ObservableObject {
         lifts += 1
         generation += 1
         release()
+    }
+
+    /// Whether macOS shows this app's icons now.
+    func isShowing(_ bundleID: String) -> Bool {
+        !isHolding || targetAllowed.contains(bundleID)
     }
 
     /// Ends a `lift()`. When it's the last one, the latest plan goes back.

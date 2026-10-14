@@ -35,8 +35,8 @@ public struct VisibilityPlan: Equatable, Sendable {
     ///     quits and starts again leaves the plan alone: every new plan costs
     ///     a connection to MenuBarAgent that macOS keeps until this app quits.
     ///   - backgroundOnly: apps that can't have menu bar icons.
-    ///   - ownBundleID: this app, which always keeps its chevron.
-    ///   - revealed: whether the chevron's section is open.
+    ///   - ownBundleID: this app, which is never hidden.
+    ///   - revealed: whether the On click icons are showing.
     public static func make(
         tiers: [String: Tier],
         defaultTier: Tier,

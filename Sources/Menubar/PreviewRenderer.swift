@@ -2,8 +2,8 @@ import AppKit
 import MenubarCore
 import SwiftUI
 
-/// Draws the chevron, the Settings window and the app icon to PNG files, so
-/// the design can be checked, and the icon built, without opening a window.
+/// Draws the Settings window and the app icon to PNG files, so the design
+/// can be checked, and the icon built, without opening a window.
 ///
 ///     swift run Menubar --render-previews /tmp/menubar-previews
 enum PreviewRenderer {
@@ -27,7 +27,6 @@ enum PreviewRenderer {
         // All but the last two are in the menu bar now.
         let present = settings.knownApps.dropLast(2).map { MenuBarInventory.Entry(bundleID: $0.bundleID, name: $0.name) }
 
-        write(chevronSheet(), to: directory.appendingPathComponent("chevron.png"))
         for dark in [true, false] {
             let suffix = dark ? "dark" : "light"
             for problem in [nil, Concealer.Problem.otherManager(name: "Bartender 7", bundleID: "com.surteesstudios.Bartender")] {
@@ -48,39 +47,6 @@ enum PreviewRenderer {
         }
         UserDefaults().removePersistentDomain(forName: suite)
         print("Previews written to \(directory.path)")
-    }
-
-    // MARK: - Menu bar
-
-    /// The chevron closed and open, on a light and a dark menu bar, at 4x.
-    private static func chevronSheet() -> NSBitmapImageRep {
-        let cell = NSSize(width: 44, height: 28)
-        return bitmap(width: cell.width * 4, height: cell.height * 2, scale: 4) {
-            for (row, dark) in [false, true].enumerated() {
-                (dark ? NSColor(white: 0.16, alpha: 1) : NSColor(white: 0.93, alpha: 1)).setFill()
-                NSRect(x: 0, y: CGFloat(row) * cell.height, width: cell.width * 4, height: cell.height).fill()
-                for (column, (revealed, dev)) in [(false, false), (true, false), (false, true), (true, true)].enumerated() {
-                    let image = ChevronRenderer.image(revealed: revealed, devMarker: dev, darkMenuBar: dark)
-                    let origin = NSPoint(
-                        x: CGFloat(column) * cell.width + (cell.width - image.size.width) / 2,
-                        y: CGFloat(row) * cell.height + (cell.height - image.size.height) / 2
-                    )
-                    let rect = NSRect(origin: origin, size: image.size)
-                    if image.isTemplate {
-                        // How the menu bar tints a template image.
-                        let tinted = NSImage(size: image.size, flipped: false) { bounds in
-                            image.draw(in: bounds)
-                            (dark ? NSColor.white : NSColor.black).set()
-                            bounds.fill(using: .sourceAtop)
-                            return true
-                        }
-                        tinted.draw(in: rect)
-                    } else {
-                        image.draw(in: rect)
-                    }
-                }
-            }
-        }
     }
 
     // MARK: - Settings
@@ -125,7 +91,7 @@ enum PreviewRenderer {
     }
 
     /// A strip of menu bar across a dark plate: three icons, the last two
-    /// fading, with the chevron at their side. Drawn on a 1024 grid.
+    /// fading, with a chevron at their side. Drawn on a 1024 grid.
     private static func drawIcon(in rect: NSRect) {
         let unit = rect.width / 1024
         let plate = NSBezierPath(
@@ -149,10 +115,31 @@ enum PreviewRenderer {
 
         // The chevron, in the icon set's own shape. It's symmetric top to
         // bottom, so the path's top-down grid needs no flipping here.
-        let chevron = ChevronRenderer.path(for: .chevronLeft, in: NSRect(x: 650 * unit, y: 412 * unit, width: 200 * unit, height: 200 * unit))
+        let chevron = path(for: .chevronLeft, in: NSRect(x: 650 * unit, y: 412 * unit, width: 200 * unit, height: 200 * unit))
         chevron.lineWidth = 28 * unit
         NSColor.white.setStroke()
         chevron.stroke()
+    }
+
+    /// One of the app's icons as a path filling `rect`.
+    private static func path(for icon: Icon, in rect: NSRect) -> NSBezierPath {
+        let scale = min(rect.width, rect.height) / Icon.gridSize
+        let path = NSBezierPath()
+        func point(_ x: Double, _ y: Double) -> NSPoint {
+            NSPoint(x: rect.minX + x * scale, y: rect.minY + y * scale)
+        }
+        for command in icon.commands.joined() {
+            switch command {
+            case .move(let x, let y): path.move(to: point(x, y))
+            case .line(let x, let y): path.line(to: point(x, y))
+            case .curve(let c1x, let c1y, let c2x, let c2y, let x, let y):
+                path.curve(to: point(x, y), controlPoint1: point(c1x, c1y), controlPoint2: point(c2x, c2y))
+            case .close: path.close()
+            }
+        }
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        return path
     }
 
     private static func bitmap(width: CGFloat, height: CGFloat, scale: CGFloat, draw: () -> Void) -> NSBitmapImageRep {

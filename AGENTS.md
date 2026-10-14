@@ -1,12 +1,14 @@
 # Menubar
 
 A menu bar icon manager for macOS 27, kept small on purpose. Each app with a
-menu bar icon gets a tier: **Always** visible, **On click** (shown while the
-chevron's section is open), or **Never**. A click on the chevron opens and
-closes the section; it closes by itself once the menu bar has been left alone
-for the chosen delay. Right-click the chevron for Settings, which lists the
-apps with their tiers. No search, no layouts, no spacing, no themes: Fabio
-asked for exactly the three tiers, so features beyond them wait for Fabio to ask.
+menu bar icon gets a tier: **Always** visible, **On click**, or **Never**. A
+click on empty menu bar space on the right half of the screen shows or hides
+the On click icons; they hide again by themselves once the menu bar has been
+left alone for the chosen delay. The app has no icon of its own in the menu
+bar (Fabio asked for none): Settings opens when the app is launched again
+(Spotlight, Raycast), on the first launch, and whenever Accessibility is
+missing. No search, no layouts, no spacing, no themes: Fabio asked for
+exactly the three tiers, so features beyond them wait for Fabio to ask.
 
 ## Working agreement
 
@@ -28,14 +30,15 @@ asked for exactly the three tiers, so features beyond them wait for Fabio to ask
 ## The dev loop
 
 `scripts/dev.sh` builds the working tree as "Menubar Dev" (bundle id
-`dev.fabio.menubar.dev`, its own settings, an orange dot on the chevron) and
+`dev.fabio.menubar.dev`, its own settings) and
 relaunches it within a few seconds of any change under `Sources/` or
 `Support/`. Two copies would each ask macOS to hide a different set of icons,
 so the script quits the installed Menubar while it runs and reopens it after.
 
 - The dev build runs from `/Applications/Menubar Dev.app` (removed again on
-  Ctrl-C). macOS only keeps an allowed app's icons for a copy in
-  `/Applications`; one in `build/` or `~/Applications` hides its own chevron.
+  Ctrl-C). macOS only honours the allowlist for apps in `/Applications`;
+  one in `build/` or `~/Applications` is hidden whatever its tier. The app
+  shows no icon now, but keeping it there keeps the dev build like the real one.
 - It starts the app with `open`, not by running the binary: macOS only gives
   a menu bar item to an app it launched itself. Anything the app prints lands
   in `build/dev.log`.
@@ -69,13 +72,14 @@ scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
 - `Sources/MenuBarRestriction`: the private macOS API, in Objective-C so its
   exceptions are caught. The only code that touches it.
 - `Sources/Menubar`: the AppKit and SwiftUI shell. `MenuBarController`
-  decides when to re-plan (tier change, chevron click, app launch or quit,
-  wake, display change) and when the section closes again. `Concealer` holds
-  the restriction and reports problems. `ClockClicks` keeps the clock opening
-  Notification Center. `MenuBarInventory` lists apps with menu bar icons
-  through Accessibility. `StatusItemController` and `ChevronRenderer` are the
-  chevron; `SettingsWindowController` and `SettingsView` are Settings;
-  `UpdateService` is the Update button.
+  decides when to re-plan (tier change, menu bar click, app launch or quit,
+  wake, display change) and when the On click icons hide again. `Concealer`
+  holds the restriction and reports problems. `BarClicks` turns a click on
+  empty menu bar space into a toggle; `ClockClicks` keeps the clock opening
+  Notification Center; `AX` holds the Accessibility reads both use.
+  `MenuBarInventory` lists apps with menu bar icons through Accessibility.
+  `SettingsWindowController` and `SettingsView` are Settings; `UpdateService`
+  is the Update button.
 - `Support/Info.plist`: the bundle's plist. The version lives here.
 - `scripts/`: building and releasing.
 
@@ -108,7 +112,7 @@ scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
   after `invalidate()` and after the assertion is freed (measured: the
   server logs the close only at process exit). So the plan is kept stable:
   apps seen running earlier stay on the allowlist (`seen`), and only a
-  never-seen app, a tier change, a chevron click or a lift makes a new one.
+  never-seen app, a tier change, a menu bar click or a lift makes a new one.
 - **Restrictions from different apps add up.** macOS shows an icon if any
   held restriction allows it, so another manager running alongside brings
   back what it doesn't hide too. Settings warns about the known ones.
@@ -117,6 +121,17 @@ scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
   Activities, AirDrop, a running Timer. And a helper app outside
   `/Applications` (iStat Menus' used to be) loses its icon whatever its tier.
   Nothing here works around those; Settings mentions the first three.
+- **A click on empty space is told from a click on an icon through
+  Accessibility.** `BarClicks` watches left clicks with a global monitor
+  (it only observes; the click still goes where it went). On a press in the
+  right half of a menu bar it reads, off the main thread, the frames of the
+  frontmost app's menus, of Apple's items (MenuBarAgent's tree) and of every
+  shown app's icons (each app's own tree; hidden apps are skipped, their
+  frames are stale), and toggles on release if none was hit and the pointer
+  moved under 4 pt. ⌘, ⌃ and ⌥ clicks and clicks that close an open menu are
+  left alone. Without Accessibility nothing can be told apart, so
+  `MenuBarController` plans as if the On click icons were showing: they stay
+  reachable, and only Never hides.
 - **The clock is pressed for macOS.** While icons are hidden MenuBarAgent
   ignores the clock (exam mode keeps Notification Center shut). `ClockClicks`
   watches clicks on it, lifts the restriction, waits 30 ms, presses the clock
@@ -129,7 +144,7 @@ scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
   none. 2.5 s after a visible app starts, its icons are checked through
   Accessibility, and a parked one gets the restriction lifted until it lands
   (2.5 s at most). For the same reason the first restriction waits a second
-  after launch, so the chevron is in the bar first.
+  after launch, so the bar has settled after login.
 - **The private API is wrapped defensively.** `MenuBarRestriction.m` checks
   every class and selector, catches exceptions, answers exactly once on the
   main queue and gives up after 3 s (a yes after that is dropped again). A
@@ -161,7 +176,6 @@ scripts/release-local.sh [ref]     # build a committed ref, install, relaunch
 
 ## Previews
 
-`--render-previews <dir>` writes PNGs of the chevron (closed, open, dev
-build; light and dark) and of Settings (with and without notices, light and
-dark), without opening a window. Read those to check a UI change. What they
+`--render-previews <dir>` writes PNGs of Settings (with and without
+notices, light and dark), without opening a window. Read those to check a UI change. What they
 can't show is behaviour: the real menu bar needs the dev build.
