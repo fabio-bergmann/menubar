@@ -6,7 +6,7 @@ chevron's section is open), or **Never**. A click on the chevron opens and
 closes the section; it closes by itself once the menu bar has been left alone
 for the chosen delay. Right-click the chevron for Settings, which lists the
 apps with their tiers. No search, no layouts, no spacing, no themes: Fabio
-asked for exactly the three tiers, so features beyond them need his ask.
+asked for exactly the three tiers, so features beyond them wait for Fabio to ask.
 
 ## Working agreement
 
